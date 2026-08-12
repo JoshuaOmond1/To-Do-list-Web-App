@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { getSupabaseBrowserClient } from "../lib/supabase";
 
 type Task = {
   id: number;
@@ -13,7 +14,7 @@ type Task = {
 
 type Filter = "all" | "active" | "completed";
 
-export function TaskApp({ user }: { user: { name: string; email: string } }) {
+export function TaskApp({ user }: { user: { id: string; name: string; email: string } }) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [title, setTitle] = useState("");
   const [priority, setPriority] = useState<Task["priority"]>("medium");
@@ -27,10 +28,9 @@ export function TaskApp({ user }: { user: { name: string; email: string } }) {
 
   const loadTasks = useCallback(async () => {
     try {
-      const response = await fetch("/api/tasks", { cache: "no-store" });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Could not load your tasks.");
-      setTasks(data.tasks);
+      const { data, error } = await getSupabaseBrowserClient().from("tasks").select("id,title,completed,priority,due_date,created_at").order("completed", { ascending: true }).order("created_at", { ascending: false });
+      if (error) throw error;
+      setTasks((data ?? []).map(fromDatabase));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load your tasks.");
     } finally {
@@ -55,14 +55,9 @@ export function TaskApp({ user }: { user: { name: string; email: string } }) {
     if (!title.trim() || saving) return;
     setSaving(true); setError("");
     try {
-      const response = await fetch("/api/tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, priority, dueDate: dueDate || null }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Could not add that task.");
-      setTasks((current) => [data.task, ...current]);
+      const { data, error } = await getSupabaseBrowserClient().from("tasks").insert({ user_id: user.id, title: title.trim(), priority, due_date: dueDate || null }).select("id,title,completed,priority,due_date,created_at").single();
+      if (error) throw error;
+      setTasks((current) => [fromDatabase(data), ...current]);
       setTitle(""); setDueDate(""); setPriority("medium");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not add that task.");
@@ -74,14 +69,14 @@ export function TaskApp({ user }: { user: { name: string; email: string } }) {
     setTasks((current) => current.map((task) => task.id === id ? { ...task, ...changes } : task));
     setError("");
     try {
-      const response = await fetch(`/api/tasks?id=${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(changes),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Could not update that task.");
-      setTasks((current) => current.map((task) => task.id === id ? data.task : task));
+      const databaseChanges: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      if (changes.title !== undefined) databaseChanges.title = changes.title;
+      if (changes.completed !== undefined) databaseChanges.completed = changes.completed;
+      if (changes.priority !== undefined) databaseChanges.priority = changes.priority;
+      if (changes.dueDate !== undefined) databaseChanges.due_date = changes.dueDate;
+      const { data, error } = await getSupabaseBrowserClient().from("tasks").update(databaseChanges).eq("id", id).select("id,title,completed,priority,due_date,created_at").single();
+      if (error) throw error;
+      setTasks((current) => current.map((task) => task.id === id ? fromDatabase(data) : task));
     } catch (err) {
       setTasks(previous);
       setError(err instanceof Error ? err.message : "Could not update that task.");
@@ -93,9 +88,8 @@ export function TaskApp({ user }: { user: { name: string; email: string } }) {
     setTasks((current) => current.filter((task) => task.id !== id));
     setError("");
     try {
-      const response = await fetch(`/api/tasks?id=${id}`, { method: "DELETE" });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Could not delete that task.");
+      const { error } = await getSupabaseBrowserClient().from("tasks").delete().eq("id", id);
+      if (error) throw error;
     } catch (err) {
       setTasks(previous);
       setError(err instanceof Error ? err.message : "Could not delete that task.");
@@ -115,7 +109,7 @@ export function TaskApp({ user }: { user: { name: string; email: string } }) {
         <a className="brand" href="/" aria-label="Daymark home"><span className="brand-mark" aria-hidden="true">D</span><span>Daymark</span></a>
         <div className="account">
           <div><strong>{firstName}</strong><span>{user.email}</span></div>
-          <a href="/signout-with-chatgpt?return_to=%2F" className="button button-small button-ghost">Sign out</a>
+          <button onClick={() => void getSupabaseBrowserClient().auth.signOut()} className="button button-small button-ghost">Sign out</button>
         </div>
       </header>
 
@@ -166,4 +160,8 @@ export function TaskApp({ user }: { user: { name: string; email: string } }) {
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`));
+}
+
+function fromDatabase(row: { id: number; title: string; completed: boolean; priority: string; due_date: string | null; created_at: string }): Task {
+  return { id: row.id, title: row.title, completed: row.completed, priority: row.priority as Task["priority"], dueDate: row.due_date, createdAt: row.created_at };
 }

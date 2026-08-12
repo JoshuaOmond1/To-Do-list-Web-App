@@ -8,5 +8,5 @@ test("the built site contains Daymark product content", async () => {
   assert.match(page, /Make today/);
   assert.match(page, /Start your list/);
   assert.match(client, /What needs doing/);
-  assert.match(client, /\/api\/tasks/);
+  assert.match(client, /from\("tasks"\)/);
 });

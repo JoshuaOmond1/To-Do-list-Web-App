@@ -1,28 +1,32 @@
 # Daymark
 
-Daymark is a private, account-based to-do web app. Visitors sign in with ChatGPT and receive an isolated task list backed by a Cloudflare D1 database.
+Daymark is a private, account-based to-do web app built with Next.js and Supabase, ready for Vercel.
 
 ## Features
 
-- Account sign-in and sign-out
-- Private tasks per user
-- Add, edit, complete, filter, and delete tasks
-- Priority and due-date fields
+- Email/password sign-up, sign-in, sign-out, and password reset
+- Private tasks enforced by PostgreSQL Row Level Security
+- Add, edit, complete, filter, prioritize, schedule, and delete tasks
 - Responsive mobile and desktop design
 
-## Local development
+## Local setup
 
-Requires Node.js 22.13 or newer.
+1. Copy `.env.example` to `.env.local`.
+2. Add the Supabase project URL and publishable key.
+3. Install and run:
 
 ```bash
 npm install
 npm run dev
 ```
 
-The hosted version supplies identity headers and provisions the D1 database. The generated database migration is in `drizzle/`.
+The database migration is in `supabase/migrations/`.
 
-## Validation
+## Deploy to Vercel
 
-```bash
-npm test
-```
+Import this GitHub repository into Vercel and add these environment variables for Production, Preview, and Development:
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+
+After deployment, add the Vercel URL to Supabase under **Authentication → URL Configuration → Redirect URLs** so confirmation and password-reset emails return to the app.
